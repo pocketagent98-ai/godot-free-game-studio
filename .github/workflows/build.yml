@@ -1,0 +1,50 @@
+name: build-godot
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  export:
+    runs-on: ubuntu-latest          # free, CPU-only runner
+    env:
+      GODOT_VERSION: 4.7.2
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Godot and export templates
+        run: |
+          set -e
+          wget -q "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          unzip -q "Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          chmod +x "Godot_v${GODOT_VERSION}-stable_linux.x86_64"
+          sudo mv "Godot_v${GODOT_VERSION}-stable_linux.x86_64" /usr/local/bin/godot
+          mkdir -p ~/.local/share/godot/export_templates/${GODOT_VERSION}.stable
+          wget -q "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_export_templates.tpz"
+          unzip -q "Godot_v${GODOT_VERSION}-stable_export_templates.tpz" -d /tmp/tpl
+          mv /tmp/tpl/templates/* ~/.local/share/godot/export_templates/${GODOT_VERSION}.stable/
+
+      - name: Import project (build the .godot cache)
+        run: godot --headless --path game --import || true
+
+      - name: Parse-check all GDScript
+        run: |
+          set -e
+          find game/src -name '*.gd' -print0 | while IFS= read -r -d '' f; do
+            echo "checking $f"
+            godot --headless --path game --check-only --script "res://${f#game/}"
+          done
+
+      - name: Export Windows and Web
+        run: |
+          set -e
+          mkdir -p build
+          godot --headless --path game --export-release "Windows Desktop" ../build/game.exe
+          godot --headless --path game --export-release "Web" ../build/web.zip
+
+      - name: Upload builds
+        uses: actions/upload-artifact@v4
+        with:
+          name: game-builds
+          path: build/

@@ -1,0 +1,24 @@
+# Godot
+game/.godot/
+game/export_presets.cfg
+game/android/
+*.translation
+build/
+export/
+*.pck
+*.tmp
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Env / secrets — never commit keys
+.env
+*.key
+secrets*
+
+# OS
+.DS_Store
+Thumbs.db

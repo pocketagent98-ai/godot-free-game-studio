@@ -1,0 +1,128 @@
+{
+  "policy": "reasoning-first: prefer reasoning=true models for deep tasks; fall back to standard, then fast. All keys via environment variables only.",
+  "tiers": {
+    "deep": "planning, architecture, debugging, design — prefer reasoning models",
+    "standard": "everyday code and content generation",
+    "fast": "classification, routing, extraction, short chat"
+  },
+  "providers": [
+    {
+      "id": "gemini",
+      "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+      "api_key_env": "GEMINI_API_KEY",
+      "notes": "Free tier: Flash-Lite ~15 RPM / 500-1000 RPD; Gemma 4 ~15 RPM, ~1.5K RPD, no TPM cap. Verify in AI Studio.",
+      "models": [
+        {
+          "id": "gemini-3.5-flash",
+          "tier": "deep",
+          "reasoning": true,
+          "thinking_param": "reasoning_effort"
+        },
+        {
+          "id": "gemini-3.1-flash-lite",
+          "tier": "fast",
+          "reasoning": false
+        },
+        {
+          "id": "gemma-4-31b-it",
+          "tier": "standard",
+          "reasoning": false
+        },
+        {
+          "id": "gemma-4-26b-it",
+          "tier": "standard",
+          "reasoning": false
+        }
+      ]
+    },
+    {
+      "id": "zai",
+      "base_url": "https://api.z.ai/api/paas/v4",
+      "api_key_env": "ZAI_API_KEY",
+      "notes": "$0 forever: glm-4.7-flash, glm-4.5-flash, glm-4.6v-flash. Concurrency-limited (not RPM/TPM). >8K context throttled under load.",
+      "models": [
+        {
+          "id": "glm-4.7-flash",
+          "tier": "standard",
+          "reasoning": false,
+          "context": 200000
+        },
+        {
+          "id": "glm-4.5-flash",
+          "tier": "standard",
+          "reasoning": false
+        },
+        {
+          "id": "glm-4.6v-flash",
+          "tier": "standard",
+          "reasoning": false,
+          "vision": true
+        }
+      ]
+    },
+    {
+      "id": "nvidia",
+      "base_url": "https://integrate.api.nvidia.com/v1",
+      "api_key_env": "NVIDIA_API_KEY",
+      "notes": "~40 RPM account-wide (shared across all models). Reasoning models include the Nemotron family.",
+      "models": [
+        {
+          "id": "nvidia/llama-3.3-nemotron-super-49b-v1.5",
+          "tier": "deep",
+          "reasoning": true
+        },
+        {
+          "id": "nvidia/nemotron-3-ultra",
+          "tier": "deep",
+          "reasoning": true
+        },
+        {
+          "id": "nvidia/nemotron-3.5-lightning",
+          "tier": "fast",
+          "reasoning": false
+        }
+      ]
+    },
+    {
+      "id": "nararouter",
+      "base_url": "https://router.bynara.id/v1",
+      "api_key_env": "NARA_API_KEY",
+      "notes": "Free plan: ~5M tokens/day, 10 RPM, no card. Free models incl. Nemotron 3 Super/Ultra/Lightning Free. Supports combos + reasoning flag.",
+      "models": [
+        {
+          "id": "auto/bynara",
+          "tier": "deep",
+          "reasoning": true
+        },
+        {
+          "id": "nemotron-3-ultra-free",
+          "tier": "deep",
+          "reasoning": true
+        },
+        {
+          "id": "nemotron-3-super-free",
+          "tier": "standard",
+          "reasoning": true
+        },
+        {
+          "id": "nemotron-3.5-lightning-free",
+          "tier": "fast",
+          "reasoning": false
+        }
+      ]
+    },
+    {
+      "id": "omniroute",
+      "base_url": "http://localhost:20128/v1",
+      "api_key_env": "OMNIROUTE_KEY",
+      "notes": "MIT self-hosted gateway (352 providers, 150+ free). Generate the key in its own dashboard at localhost:20128. Optional — you have enough free limits without it.",
+      "models": [
+        {
+          "id": "auto",
+          "tier": "deep",
+          "reasoning": true
+        }
+      ]
+    }
+  ]
+}
