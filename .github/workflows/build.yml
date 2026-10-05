@@ -1,4 +1,4 @@
-name: build-godot
+name: build-turbo-rush
 
 on:
   push:
@@ -10,6 +10,7 @@ jobs:
     runs-on: ubuntu-latest          # free, CPU-only runner
     env:
       GODOT_VERSION: 4.7.2
+      PROJECT: game
     steps:
       - uses: actions/checkout@v4
 
@@ -25,26 +26,49 @@ jobs:
           unzip -q "Godot_v${GODOT_VERSION}-stable_export_templates.tpz" -d /tmp/tpl
           mv /tmp/tpl/templates/* ~/.local/share/godot/export_templates/${GODOT_VERSION}.stable/
 
-      - name: Import project (build the .godot cache)
-        run: godot --headless --path game --import || true
+      - name: Import project
+        run: godot --headless --path "$PROJECT" --import || true
 
       - name: Parse-check all GDScript
         run: |
           set -e
-          find game/src -name '*.gd' -print0 | while IFS= read -r -d '' f; do
+          find "$PROJECT/src" -name '*.gd' -print0 | while IFS= read -r -d '' f; do
             echo "checking $f"
-            godot --headless --path game --check-only --script "res://${f#game/}"
+            godot --headless --path "$PROJECT" --check-only --script "res://${f#$PROJECT/}"
           done
 
-      - name: Export Windows and Web
+      - name: Smoke-run the race scene
+        run: godot --headless --path "$PROJECT" res://scenes/race.tscn --quit-after 240
+
+      # ---------- Web / HTML5 ----------
+      - name: Export Web (HTML5)
         run: |
-          set -e
-          mkdir -p build
-          godot --headless --path game --export-release "Windows Desktop" ../build/game.exe
-          godot --headless --path game --export-release "Web" ../build/web.zip
+          mkdir -p "$PROJECT/build/web"
+          godot --headless --path "$PROJECT" --export-release "Web" "build/web/index.html"
+
+      # ---------- Android APK ----------
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android packages
+        run: |
+          sdkmanager "platform-tools" "build-tools;35.0.1" "platforms;android-35" "cmdline-tools;latest" "cmake;3.10.2.4988404" "ndk;28.1.13356709"
+
+      - name: Export Android APK
+        run: |
+          mkdir -p "$PROJECT/build"
+          godot --headless --path "$PROJECT" --export-release "Android" "build/turbo_rush.apk"
 
       - name: Upload builds
         uses: actions/upload-artifact@v4
         with:
-          name: game-builds
-          path: build/
+          name: turbo-rush-builds
+          path: |
+            game/build/turbo_rush.apk
+            game/build/web/
