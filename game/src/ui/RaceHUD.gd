@@ -104,6 +104,8 @@ func hide_countdown() -> void:
 func _process(_delta: float) -> void:
 	if race == null or race.player == null:
 		return
+	if race.autopilot:
+		return
 	var p: RaceCar = race.player
 	# apply touch controls (only if not paused)
 	if not get_tree().paused:

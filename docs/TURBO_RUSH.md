@@ -104,6 +104,34 @@ fully playable without ads.
 
 Both are produced by `.github/workflows/build.yml` on every push.
 
+## Testing / playtest
+
+The game ships with a headless playtest agent, so regressions are caught
+automatically:
+
+```bash
+# an autopilot bot drives a full race and reports telemetry each second
+godot --headless --path game res://scenes/race.tscn --autopilot --quit-after 9000
+# → [PLAYTEST] FINISH elapsed=37.6s pos=1 lap=3/2 ... minY=-0.01
+```
+
+`game/tests/physics_probe.tscn` drops a single car and reports its resting
+height, for isolating physics problems. CI runs the autopilot race and fails if
+the race does not finish.
+
+### Bugs this playtest found and fixed
+
+1. **Cars fell through the world** — the road and ground had no collision.
+2. **Cars could not move** — a box with default friction (1.0) could not
+   overcome its own static friction; fixed with a low-friction physics material.
+3. **Start grid was wrong** — the six cars spawned along the first six track
+   points instead of on one start line.
+4. **The track loop was broken** — the generator snapped the last point to the
+   origin, creating a giant final segment that jammed every car near the close.
+   Rebuilt as a smoothed closed loop.
+5. **Cars stalled for seconds against barriers** — widened the run-off area and
+   added a standard rescue/respawn system.
+
 ## Offline-first
 
 Racing, progression, the garage and the economy are fully offline. Only ads and

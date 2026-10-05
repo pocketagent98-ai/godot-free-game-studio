@@ -37,8 +37,12 @@ jobs:
             godot --headless --path "$PROJECT" --check-only --script "res://${f#$PROJECT/}"
           done
 
-      - name: Smoke-run the race scene
-        run: godot --headless --path "$PROJECT" res://scenes/race.tscn --quit-after 240
+      - name: Playtest — autopilot race must finish (regression test)
+        run: |
+          set -o pipefail
+          godot --headless --path "$PROJECT" res://scenes/race.tscn --autopilot --quit-after 9000 | tee /tmp/playtest.log
+          grep -q "FINISH" /tmp/playtest.log
+          echo "race completed"
 
       # ---------- Web / HTML5 ----------
       - name: Export Web (HTML5)

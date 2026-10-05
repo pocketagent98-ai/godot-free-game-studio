@@ -21,6 +21,7 @@ func build(level: Dictionary) -> void:
 
 	_build_centerline(rng, curviness, segments)
 	_build_road()
+	_build_ground_collision()
 	_build_markings()
 	_build_barriers()
 	_build_scenery(rng)
@@ -28,36 +29,47 @@ func build(level: Dictionary) -> void:
 	_build_start_grid()
 
 func _build_centerline(rng: RandomNumberGenerator, curviness: float, segments: int) -> void:
-	# Random-walk headings that are forced to close into a loop.
-	var headings: Array[float] = []
-	var heading := 0.0
-	for i in segments:
-		var turn := rng.randf_range(-1.0, 1.0) * curviness * 0.9
-		heading += turn
-		headings.append(heading)
-	# bias the average heading back toward 0 so the loop closes
-	var mean := 0.0
-	for h in headings:
-		mean += h
-	mean /= float(headings.size())
-	for i in headings.size():
-		headings[i] -= mean * (1.0 - float(i) / float(headings.size()))
-
-	var pos := Vector3.ZERO
+	# A smooth CLOSED loop: points on a jittered circle. Guarantees the loop
+	# closes cleanly with no giant final segment (found by playtest: the old
+	# random-walk snapped the last point to the origin and jammed every car).
+	var n := maxi(16, segments)
+	var base_r := 45.0 + curviness * 55.0
+	var radii: Array[float] = []
+	for i in n:
+		radii.append(base_r * (1.0 + rng.randf_range(-0.28, 0.28) * curviness))
+	# Smooth the radii so the loop has no sharp spikes that trap cars.
+	for _pass in 3:
+		var smoothed: Array[float] = []
+		for i in n:
+			var a: float = radii[(i - 1 + n) % n]
+			var b: float = radii[i]
+			var c: float = radii[(i + 1) % n]
+			smoothed.append((a + 2.0 * b + c) / 4.0)
+		radii = smoothed
 	waypoints.clear()
-	waypoints.append(pos)
-	for h in headings:
-		pos += Vector3(sin(h), 0, -cos(h)) * SEGMENT
-		waypoints.append(pos)
-	# snap last point back to start to close the loop
-	waypoints[waypoints.size() - 1] = Vector3.ZERO
+	for i in n:
+		var ang := TAU * float(i) / float(n)
+		waypoints.append(Vector3(sin(ang) * radii[i], 0.0, -cos(ang) * radii[i]))
 	total_length = 0.0
-	for i in waypoints.size() - 1:
-		total_length += waypoints[i].distance_to(waypoints[i + 1])
+	for i in n:
+		total_length += waypoints[i].distance_to(waypoints[(i + 1) % n])
 
 func _build_road() -> void:
 	var mesh := _ribbon(ROAD_WIDTH, 0.02, _theme_color())
 	add_child(mesh)
+
+func _build_ground_collision() -> void:
+	# The world needs a floor or the cars fall forever (found by playtest).
+	var body := StaticBody3D.new()
+	body.collision_layer = 0b0001
+	body.collision_mask = 0
+	var cs := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = Vector3(1400, 40, 1400)      # thick, so fast cars cannot tunnel through
+	cs.shape = box
+	cs.position = Vector3(0, -20, 0)        # top surface sits at y = 0
+	body.add_child(cs)
+	add_child(body)
 
 func _build_markings() -> void:
 	var mat := StandardMaterial3D.new()
@@ -140,7 +152,7 @@ func _build_barriers() -> void:
 		dir = dir.normalized()
 		var side := Vector3(-dir.z, 0, dir.x)
 		for s: float in [-1.0, 1.0]:
-			var pos: Vector3 = p + side * s * (ROAD_WIDTH * 0.5 + 0.4)
+			var pos: Vector3 = p + side * s * (ROAD_WIDTH * 0.5 + 2.5)
 			var mi := MeshInstance3D.new()
 			var bm := BoxMesh.new()
 			bm.size = Vector3(0.4, 0.8, SEGMENT * 0.6)
@@ -212,21 +224,22 @@ func _build_checkpoints() -> void:
 func _build_start_grid() -> void:
 	start_transforms.clear()
 	var count := waypoints.size()
+	# All six cars share the SAME start line and form a 2-column grid behind it.
+	var base := waypoints[0]
+	var nxt := waypoints[1 % count]
+	var dir := (nxt - base)
+	dir.y = 0
+	if dir.length() < 0.001:
+		dir = Vector3(0, 0, -1)
+	dir = dir.normalized()
+	var side := Vector3(-dir.z, 0, dir.x)
 	for i in 6:
-		var base := waypoints[mini(i, count - 1)]
-		var nxt := waypoints[mini(i + 1, count - 1)]
-		var dir := (nxt - base)
-		dir.y = 0
-		if dir.length() < 0.001:
-			dir = Vector3(0, 0, -1)
-		dir = dir.normalized()
-		var side := Vector3(-dir.z, 0, dir.x)
 		var row := i / 2
 		var col := i % 2
-		var pos := base - dir * (row * 6.0) + side * (1.0 if col == 0 else -1.0) * 3.0
+		var pos: Vector3 = base - dir * (float(row) * 6.0) + side * (1.0 if col == 0 else -1.0) * 3.0
 		pos.y = 0.6
 		var xf := Transform3D()
-		xf = xf.looking_at(-dir, Vector3.UP)
+		xf = xf.looking_at(dir, Vector3.UP)
 		xf.origin = pos
 		start_transforms.append(xf)
 

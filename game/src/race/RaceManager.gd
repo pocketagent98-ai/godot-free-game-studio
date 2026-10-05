@@ -13,6 +13,9 @@ var hud: RaceHUD
 
 var started := false
 var finished := false
+var autopilot := false
+var _ap_elapsed := 0.0
+var _ap_log := 0.0
 var countdown := 3.0
 var race_time := 0.0
 var player_lap := 1
@@ -24,10 +27,13 @@ const AI_CAR_POOL := [3, 8, 14, 21, 29, 37, 46, 55]
 func _ready() -> void:
 	level_id = Game.pending_level
 	level_data = GameData.level(level_id)
+	autopilot = "--autopilot" in OS.get_cmdline_args()
 	_build()
 	_setup_camera()
 	_setup_hud()
 	_spawn_field()
+	if autopilot:
+		_setup_autopilot()
 	Audio.play("countdown")
 
 func _build() -> void:
@@ -107,12 +113,16 @@ func _process(delta: float) -> void:
 	race_time += delta
 	_update_player_progress()
 	_update_positions()
+	_rescue_check(delta)
 	if hud:
 		hud.update_from(self)
 
 	if player.finished and not finished:
 		finished = true
 		_end_race()
+
+	if autopilot:
+		_autopilot_tick(delta)
 
 func _apply_pre_race_booster() -> void:
 	if Game.pre_race_booster == "nitro":
@@ -154,6 +164,41 @@ func _update_positions() -> void:
 			player_position = i + 1
 
 var player_position := 1
+var _stuck_time: Dictionary = {}
+
+func _rescue_check(delta: float) -> void:
+	# Standard arcade-racer rescue: if a car goes far off track or stalls too
+	# long, put it back on the racing line. Prevents permanent deadlocks.
+	for c in racers:
+		if c.finished:
+			continue
+		var idx := int(track.progress_for_position(c.global_position))
+		var wp: Vector3 = track.waypoints[idx]
+		var dist := c.global_position.distance_to(wp)
+		var key := c.get_instance_id()
+		if c.current_speed_kmh() < 12.0:
+			_stuck_time[key] = float(_stuck_time.get(key, 0.0)) + delta
+		else:
+			_stuck_time[key] = 0.0
+		if dist > 30.0 or float(_stuck_time.get(key, 0.0)) > 3.0:
+			_respawn(c, idx)
+
+func _respawn(c: RaceCar, idx: int) -> void:
+	var count := track.waypoints.size()
+	var wp: Vector3 = track.waypoints[idx]
+	var nxt: Vector3 = track.waypoints[(idx + 1) % count]
+	var dir := (nxt - wp)
+	dir.y = 0
+	if dir.length() < 0.001:
+		dir = Vector3(0, 0, -1)
+	dir = dir.normalized()
+	var xf := Transform3D()
+	xf = xf.looking_at(dir, Vector3.UP)
+	xf.origin = wp + Vector3(0, 0.6, 0)
+	c.reset_to(xf)
+	_stuck_time[c.get_instance_id()] = 0.0
+	if autopilot:
+		print("[PLAYTEST] respawn %s at wp %d" % ["player" if c == player else "ai", idx])
 
 func _driver_for(car: RaceCar) -> AIDriver:
 	for d in ai_drivers:
@@ -163,7 +208,60 @@ func _driver_for(car: RaceCar) -> AIDriver:
 
 func _end_race() -> void:
 	Audio.play("finish")
+	if autopilot:
+		_autopilot_report("FINISH")
+		get_tree().quit()
+		return
 	Game.finish_race(player_position, false)
 
 func nearest_waypoint_index(pos: Vector3) -> int:
 	return int(track.progress_for_position(pos))
+
+# ------------------------------------------------------------- playtest ---- #
+func _setup_autopilot() -> void:
+	Engine.time_scale = 1.0
+	countdown = 0.05
+	var bot := AIDriver.new()
+	add_child(bot)
+	bot.setup(player, track.waypoints, 0.9)
+	ai_drivers.append(bot)
+	print("[PLAYTEST] autopilot on waypoints=%d laps=%d racers=%d" % [
+		track.waypoints.size(), int(level_data.get("laps", 2)), racers.size()])
+
+func _autopilot_tick(delta: float) -> void:
+	_ap_elapsed += delta
+	_ap_log += delta
+	if _ap_log >= 1.0:
+		_ap_log = 0.0
+		var min_y := 999.0
+		var ai_speed := 0.0
+		var ai_n := 0
+		for c in racers:
+			min_y = minf(min_y, c.global_position.y)
+			if c != player:
+				ai_speed += c.current_speed_kmh()
+				ai_n += 1
+		print("[PLAYTEST] t=%.1f pos=%d lap=%d spd=%.0f py=%.2f pvy=%.2f pxz=(%.1f,%.1f) minY=%.2f aiAvg=%.0f" % [
+			_ap_elapsed, player_position, player_lap, player.current_speed_kmh(),
+			player.global_position.y, player.linear_velocity.y,
+			player.global_position.x, player.global_position.z,
+			min_y, ai_speed / maxf(1.0, float(ai_n))])
+	if _ap_elapsed > 150.0:
+		_autopilot_report("TIMEOUT")
+		get_tree().quit()
+
+func _autopilot_report(tag: String) -> void:
+	var ai_speed := 0.0
+	var ai_n := 0
+	var moving := 0
+	var min_y := 999.0
+	for c in racers:
+		min_y = minf(min_y, c.global_position.y)
+		if c.current_speed_kmh() > 5.0:
+			moving += 1
+		if c != player:
+			ai_speed += c.current_speed_kmh()
+			ai_n += 1
+	print("[PLAYTEST] %s elapsed=%.1fs pos=%d lap=%d/%d playerSpd=%.0f aiAvg=%.0f moving=%d/%d minY=%.2f" % [
+		tag, _ap_elapsed, player_position, player_lap, int(level_data.get("laps", 2)),
+		player.current_speed_kmh(), ai_speed / maxf(1.0, float(ai_n)), moving, racers.size(), min_y])

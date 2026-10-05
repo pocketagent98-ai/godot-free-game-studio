@@ -43,11 +43,17 @@ func setup(car_id: int, paint_id: int, wheel_id: int, upgrade_lvl: int, player: 
 	stats["acceleration"] = float(stats["acceleration"]) * up_mult
 
 func _ready() -> void:
-	mass = float(stats.get("weight", 1200.0)) / 1000.0
+	mass = float(stats.get("weight", 1200.0)) / 100.0
 	contact_monitor = true
 	max_contacts_reported = 4
 	continuous_cd = true
 	gravity_scale = 1.0
+	# Low friction: a box with default friction (1.0) cannot overcome its own
+	# static friction and never moves. Found by playtest.
+	var pm := PhysicsMaterial.new()
+	pm.friction = 0.08
+	pm.bounce = 0.0
+	physics_material_override = pm
 	_build_visuals()
 	body_entered.connect(_on_body_entered)
 	if is_player:
@@ -63,7 +69,7 @@ func _build_visuals() -> void:
 	var box := BoxShape3D.new()
 	box.size = Vector3(1.9, 0.6, 4.2)
 	shape.shape = box
-	shape.position = Vector3(0, 0.55, 0)
+	shape.position = Vector3(0, 0.30, 0)   # wheels rest on the ground at y = 0
 	add_child(shape)
 
 	var mat := StandardMaterial3D.new()
@@ -164,7 +170,8 @@ func _physics_process(delta: float) -> void:
 	apply_central_force(-right * lateral * grip * mass * 2.0)
 
 	# --- downforce + anti-roll -----------------------------------------
-	apply_central_force(Vector3(0, -absf(_speed) * 0.35 * mass, 0))
+	# Gentle and capped: a strong downforce made the body sink into the road.
+	apply_central_force(Vector3(0, -minf(absf(_speed), 60.0) * 0.06 * mass, 0))
 
 	# --- crash cooldown -------------------------------------------------
 	if _crash_cooldown > 0.0:

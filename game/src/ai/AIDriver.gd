@@ -60,13 +60,20 @@ func _physics_process(delta: float) -> void:
 	if corner < 0.12 and car.boost_seconds <= 0.0 and randf() < 0.01 * skill:
 		car.apply_boost(1.6)
 
-	# stuck recovery
+	# stuck recovery: reverse out, then rejoin. (Playtest found 9s stalls.)
 	if car.current_speed_kmh() < 12.0:
 		_recover_timer += delta
-		if _recover_timer > 2.0:
-			car.steer = randf_range(-1.0, 1.0)
-			car.throttle = 1.0
-			if _recover_timer > 4.0:
+		if _recover_timer > 1.0:
+			# phase 1: back up while steering away from the obstacle
+			car.throttle = 0.0
+			car.braking = true
+			car.steer = -signf(diff) if absf(diff) > 0.01 else 1.0
+			if _recover_timer > 2.2:
+				# phase 2: turn hard and go again
+				car.braking = false
+				car.throttle = 1.0
+				car.steer = clampf(-diff * 1.6, -1.0, 1.0)
+			if _recover_timer > 3.4:
 				_recover_timer = 0.0
 	else:
 		_recover_timer = 0.0
